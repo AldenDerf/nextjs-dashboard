@@ -23,4 +23,14 @@ model User {
   password String? // make it optional
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt() // Automatically updates on any changes
+
+  session Session[] // relationship: one user can have many sessions
+}
+
+model Session {
+  id String @id @default(uuid()) // unique id for each session
+  sessionToken String @unique // random token to identify the session
+  userId Int // foreign key linking to User
+  user User @relation(fields: [userId], references: [id])
+  expires DateTime // expiration date of the session
 }
