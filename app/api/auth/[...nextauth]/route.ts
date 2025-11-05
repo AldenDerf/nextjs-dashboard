@@ -1,101 +1,118 @@
-// Import NextAuth and required tools
-import NextAuth from 'next-auth';
-import CredentialProvider from 'next-auth/providers/credentials';
+import NextAuth from "next-auth";
+import type {NextAuthConfig} from "next-auth";
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import bcrypt from "bcryptjs";
 
-// Create Prisma instance to talk to the database
 const prisma = new PrismaClient();
 
-// Main NextAuth configuration
-const handler = NextAuth({
-    // Define which login methods your app supports
+// This is your main authentication configuration
+export const authOptions: NextAuthConfig = {
+    // ---------
+    // LOGIN PROVIDERS
+    // ---------
+
     providers: [
-        CredentialProvider({
-            // This provider lets users log in with email + password
-            name: "Credentials",
+        CredentialsProvider({
+            name: "Credentials", // name shown on login form
+
+            // Define what fields the user will enter
             credentials: {
-                email: { label: "Email", type: "email"},
-                password: { label: "Password", type: "password"}
+                email: { label: "Email", type: "email", placeholder: "your@example.com"},
+                password: { label: "Password", type:"password"}
             },
 
-            //This functon runs whenver someone tries to log in
+            // The authorize() function runs when a user logs in
             async authorize(credentials) {
-                //  Check of email and password are provided
-                if (!credentials?.email || !credentials.password){
-                    throw new Error("Please enter email and password")
+                // IMPORTANT: The 'credentials' object is now typed using
+                // Zod or simply requires a check to ensure fields are strings/defined
+                if(typeof !credentials?.email || typeof !credentials.password) {
+                    return null; // Return null instead of throwing an error for CredentialsProvider in V5
                 }
 
-                // 1. Find user in the database by email
+                const email: any = credentials.email;
+                const password: any = credentials.password;
+
+                // Find user by email in your database
                 const user = await prisma.user.findUnique({
-                    where: { email: credentials.email},
+                    where: { email }
                 })
 
-                // 2. If user not found, stop here
-                if (!user) throw new Error("No user found with that email");
+                if (!user) return null; // Return null if no user is found
 
-                // 3. Compare entered password with stored hashed password
-                const isPasswordValid =  await bcrypt.compare(credentials.password, user.password)
-                
-                // 4. If wrong password, stop
-                if (!isPasswordValid) {
-                    throw new Error("Invalid password")
-                }
+                // Compare password entered with hased password in DB
+                // NOTE: Check if user.password exists before comparing
+                if (!user) return null; // Return null if no user is found
 
-                // 5 If everything's correct, return user info
+                const isPasswordValid = await bcrypt.compare(password, user.password)
+
+                if (!isPasswordValid) return null; // Return null for invalid password
+
+                // Return a simplified user object. The shape of this object
+                // is what gets stored in the session/JWT.  
                 return {
                     id: user.id.toString(),
                     name: user.name,
-                    email: user.email
+                    email: user.email,
+
                 }
             }
-        })
+        }),
     ],
 
-    // Session Setting
+
+    // --------
+    // SESSIONS STRATEGY
+    // --------
     session: {
-        strategy: 'database', // Store session in our MySQL DB
+        strategy: 'database', // store session in DB, not just cookies
     },
 
-    // Database operations for session handling
-    adapter: {
 
-        // Create new session record
-        async createSession(data) {
+    // -------------
+    // DATABASE ADAPTER (CUSTOM)
+    // -------------
+
+    adapter: {
+        // Create a new session record
+        async createSession(data:any) {
             return prisma.session.create({data})
         },
 
-        // Get session + user info from DB
-        async getSessionAndUser(sessionToken) {
+        // Get both session and user info
+        async getSessionAndUser(sessionToken: any) {
             const session = await prisma.session.findUnique({
-                where: {sessionToken},
-                include: { user: true} // include linked user info
+                where: { sessionToken},
+                include: { user: true},
             })
 
             if (!session) return null
-            const {user, ...sess} = session
-            return {session: sess, user}
+            const { user, ...sess} = session
+            return { session: sess, user}
         },
 
-        // Update existing session
-        async updateSession(data) {
+        // Update session (example: refresh expiry date)
+        async updateSession(data: any) {
             return prisma.session.update({
                 where: { sessionToken: data.sessionToken},
-                data,
+                data
             })
         },
 
-        // Delete session on logout
-        async deleteSession(sessionToken) {
+        // Delete session when user logs out
+        async deleteSession(sessionToken: any) {
             await prisma.session.delete({ where: { sessionToken}})
-        }
-
+        },
     },
 
-    // Secret key used to sign and encrypt tokens
-    secret: process.env.NEXTAUTH_SECRETE, // Keep this safe
-});
+    // -----------------
+    // SECRET key
+    // -----------------
 
-// Export both Get and POST
+    secret: process.env.NEXTAUTH_SECRET, // used to sign and encrypt tokens
 
-export {handler as GET, handler as POST}
+    
+}
+// Pass authOptions into NextAuth()
+    const handler = NextAuth(authOptions)
+    export {handler as GET, handler as POST}
