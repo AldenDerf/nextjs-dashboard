@@ -1,7 +1,8 @@
 // This file contains type definitions for your data.
 // It describes the shape of the data, and what data type each property should accept.
 // For simplicity of teaching, we're manually defining these types.
-// However, these types are generated automatically if you're using an ORM such as Prisma.
+import * as z from 'zod';
+
 export type User = {
   id: string;
   name: string;
@@ -86,3 +87,32 @@ export type InvoiceForm = {
   amount: number;
   status: 'pending' | 'paid';
 };
+
+export type SignUpData = z.infer<typeof SignupFormSchema>;
+
+export const SignupFormSchema = z.object({
+  name: z
+  .string()
+  .min(2, { error: 'Name must be at least 2 characters long.'})
+  .trim(),
+  email: z.email({ error: 'Please enter a valid email.'}),
+  password: z
+  .string()
+  .min(8, { error: 'Be at least 8 characters long'})
+  .regex(/[a-zA-Z]/, {error: 'Containt at least one letter'})
+  .regex(/[0-9]/, { error: 'Contain at lease one number.'})
+  .regex(/[^a-zA-Z0-9]/, { error: 'Contain at least one special character.'})
+  .trim(),
+})
+
+export type FormState = 
+| { // Shape:: the 'error' object shape
+
+  error?: {
+    name?: string[]
+    email: string[]
+    password?: string[]
+
+  }
+  message?:string // <-- Note: message is optional here
+} | undefined
